@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lissajous Visualizer</title>
+    <style>
+        body {
+            background-color: #ffccff; /* Pink background */
+            color: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            border: 2px solid #ff6699;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            width: 100%; /* Full width for responsive design */
+            height: auto; /* Maintain aspect ratio */
+            max-width: 800px; /* Max width for larger screens */
+            max-height: 600px; /* Max height for larger screens */
+        }
+        button {
+            background-color: #ff6699;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            padding: 10px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #ff3366;
+        }
+        h1 {
+            font-family: 'Cursive', sans-serif;
+        }
+        input[type="file"] {
+            margin-top: 10px;
+        }
+        input[type="range"] {
+            width: 100%; /* Full width for the progress bar and sliders */
+            margin-top: 10px;
+        }
+        .timestamp {
+            margin-top: 10px;
+            font-size: 16px;
+            text-align: center; /* Center the timestamp */
+        }
+        .settings {
+            margin-top: 20px;
+            border: 2px solid #ff6699;
+            border-radius: 10px;
+            padding: 15px;
+            background-color: #ffffff; /* White background for settings */
+            width: 100%; /* Full width for responsive design */
+            max-width: 800px; /* Max width for larger screens */
+        }
+    </style>
+</head>
+<body>
+    <h1>Lissajous Visualizer</h1>
+    <canvas id="canvas" width="800" height="600"></canvas>
+
+    <!-- Dropdown menu for selecting visualizer -->
+    <label for="visualizerSelect">Choose Visualizer:</label>
+    <select id="visualizerSelect">
+        <option value="lissajous">Lissajous Curve</option>
+        <option value="bars">Bar Visualizer</option>
+        <option value="circle">Circle Visualizer</option>
+        <option value="spiral">Spiral Visualizer</option>
+        <option value="waveform">Waveform Visualizer</option>
+    </select>
+
+    <!-- Music Control Section -->
+    <div class="music-controls">
+        <input type="file" id="audioFile" accept="audio/*" />
+        <button id="play">Play</button>
+        <div class="timestamp">
+            <span id="currentTime">0:00</span> / <span id="duration">0:00</span>
+        </div>
+        <input type="range" id="progressBar" value="0" step="0.1" min="0" max="100" />
+    </div>
+
+    <!-- Settings Section -->
+    <div class="settings">
+        <label for="sensitivity">Sensitivity:</label>
+        <input type="range" id="sensitivity" value="1" min="0" max="10" step="0.1" />
+        <label for="size">Visualization Size:</label>
+        <input type="range" id="size" value="1" min="0.5" max="3" step="0.1" />
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let audioContext;
+        let analyser;
+        let audioBufferSourceNode;
+        let dataArray;
+        let audioElement;
+        let progressBar = document.getElementById('progressBar');
+        const currentTimeDisplay = document.getElementById('currentTime');
+        const durationDisplay = document.getElementById('duration');
+        const sensitivitySlider = document.getElementById('sensitivity');
+        const sizeSlider = document.getElementById('size');
+        const visualizerSelect = document.getElementById('visualizerSelect');
+
+        document.getElementById('play').addEventListener('click', () => {
+            const fileInput = document.getElementById('audioFile');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                alert('Please upload an audio file.');
+                return;
+            }
+
+            const audioURL = URL.createObjectURL(file);
+            playAudio(audioURL);
+        });
+
+        function playAudio(audioURL) {
+            if (audioContext) {
+                audioContext.close(); // Close the previous audio context if it exists
+            }
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+
+            audioElement = new Audio(audioURL);
+            const source = audioContext.createMediaElementSource(audioElement);
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+
+            audioElement.play();
+            startVisualizer();
+            updateProgressBar();
+            updateDuration();
+        }
+
+        function startVisualizer() {
+            analyser.fftSize = 2048;
+            const bufferLength = analyser.frequencyBinCount;
+            dataArray = new Uint8Array(bufferLength);
+
+            function draw() {
+                requestAnimationFrame(draw);
+                analyser.getByteFrequencyData(dataArray);
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ffccff'; // Clear the canvas with pink
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                const selectedVisualizer = visualizerSelect.value;
+
+                if (selectedVisualizer === 'lissajous') {
+                    drawLissajous();
+                } else if (selectedVisualizer === 'bars') {
+                    drawBars();
+                } else if (selectedVisualizer === 'circle') {
+                    drawCircle();
+                } else if (selectedVisualizer === 'spiral') {
+                    drawSpiral();
+                } else if (selectedVisualizer === 'waveform') {
+                    drawWaveform();
+                }
+            }
+
+            draw();
+        }
+
+        function drawLissajous() {
+            const freq1 = dataArray[10];
+            const freq2 = dataArray[20];
+            const freq3 = dataArray[30];
+
+            const sensitivity = parseFloat(sensitivitySlider.value);
+            const size = parseFloat(sizeSlider.value) * 100;
+
+            const a = (size + (freq1 / 255) * size) * sensitivity;
+            const b = (size + (freq2 / 255) * size) * sensitivity;
+            const delta = (freq3 / 255) * Math.PI * 2;
+
+            const n = Math.floor(3 + (freq2 / 255) * 5);
+            const m = Math.floor(2 + (freq1 / 255) * 5);
+
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, canvas.height / 2);
+
+            for (let i = 0; i < 200; i++) {
+                const t = i / 200 * Math.PI * 2;
+                const x = a * Math.sin(n * t + delta);
+                const y = b * Math.sin(m * t);
+                ctx.lineTo(canvas.width / 2 + x, canvas.height / 2 + y);
+            }
+
+            ctx.strokeStyle = '#ff6699';
+            ctx.stroke();
+        }
+
+        function drawBars() {
+            const barWidth = (canvas.width / dataArray.length) * 2.5;
+            let barHeight;
+            let x = 0;
+
+            for (let i = 0; i < dataArray.length; i++) {
+                barHeight = dataArray[i] * (sizeSlider.value * 2);
+
+                const r = barHeight + (25 * (i / dataArray.length));
+                const g = 50 * (i / dataArray.length);
+                const b = 150;
+
+                ctx.fillStyle = `rgb(${r},${g},${b})`;
+                ctx.fillRect(x, canvas.height - barHeight / 2, barWidth, barHeight);
+
+                x += barWidth + 1;
+            }
+        }
+
+        function drawCircle() {
+            const sensitivity = parseFloat(sensitivitySlider.value);
+            const size = parseFloat(sizeSlider.value);
+
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height / 2, size * 100, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#ff6699';
+            ctx.stroke();
+
+            for (let i = 0; i < dataArray.length; i++) {
+                const angle = (i / dataArray.length) * Math.PI * 2;
+                const x = canvas.width / 2 + Math.cos(angle) * size * 100;
+                const y = canvas.height / 2 + Math.sin(angle) * size * 100;
+
+                const length = dataArray[i] * sensitivity;
+
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(
+                    canvas.width / 2 + Math.cos(angle) * (size * 100 + length),
+                    canvas.height / 2 + Math.sin(angle) * (size * 100 + length)
+                );
+                ctx.strokeStyle = `rgb(${dataArray[i]}, 100, 150)`;
+                ctx.stroke();
+            }
+        }
+
+        function drawSpiral() {
+            const sensitivity = parseFloat(sensitivitySlider.value);
+            const size = parseFloat(sizeSlider.value);
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            let angle = 0;
+            let radius = 0;
+
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+
+            for (let i = 0; i < dataArray.length; i++) {
+                radius += dataArray[i] * size * 0.02;
+                angle += 0.1;
+                const x = centerX + radius * Math.cos(angle);
+                const y = centerY + radius * Math.sin(angle);
+                ctx.lineTo(x, y);
+            }
+
+            ctx.strokeStyle = '#ff6699';
+            ctx.stroke();
+        }
+
+        function drawWaveform() {
+            const bufferLength = analyser.fftSize;
+            const waveDataArray = new Uint8Array(bufferLength);
+            analyser.getByteTimeDomainData(waveDataArray);
+
+            const sliceWidth = (canvas.width * 1.0) / bufferLength;
+            let x = 0;
+
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#ff6699';
+            ctx.beginPath();
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = waveDataArray[i] / 128.0;
+                const y = (v * canvas.height) / 2;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+            }
+
+            ctx.lineTo(canvas.width, canvas.height / 2);
+            ctx.stroke();
+        }
+
+        function updateProgressBar() {
+            audioElement.ontimeupdate = function () {
+                const currentTime = audioElement.currentTime;
+                const duration = audioElement.duration;
+                progressBar.max = duration;
+                progressBar.value = currentTime;
+
+                const minutes = Math.floor(currentTime / 60);
+                const seconds = Math.floor(currentTime % 60).toString().padStart(2, '0');
+                currentTimeDisplay.textContent = `${minutes}:${seconds}`;
+            };
+        }
+
+        function updateDuration() {
+            audioElement.onloadedmetadata = function () {
+                const minutes = Math.floor(audioElement.duration / 60);
+                const seconds = Math.floor(audioElement.duration % 60).toString().padStart(2, '0');
+                durationDisplay.textContent = `${minutes}:${seconds}`;
+            };
+        }
+
+        progressBar.addEventListener('input', function () {
+            audioElement.currentTime = progressBar.value;
+        });
+    </script>
+</body>
+</html>
